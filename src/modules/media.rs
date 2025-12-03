@@ -73,44 +73,79 @@ impl MediaLinkModule {
         Self
     }
 
+    fn playerctl_smart(&self, args: &[&str]) -> Option<String> {
+        let candidates = ["strawberry", "tauon", "vlc", "haruna", "plasma-browser-integration", "chromium", "brave", "firefox", "%any"];
+
+        for player in candidates {
+            let mut cmd = Command::new("playerctl");
+            cmd.arg("--player").arg(player);
+            cmd.args(args);
+
+            if let Ok(output) = cmd.output() {
+                if output.status.success() {
+                    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !s.is_empty() && !s.contains("No player") && !s.contains("Could not") && !s.contains("No players found") {
+                        if args.first() == Some(&"status") && s == "Stopped" {
+                            continue;
+                        }
+                        return Some(s);
+                    }
+                }
+            }
+        }
+        None
+    }
+
     pub fn get_formatted_track(&self, options: &MediaLinkOptions) -> Option<String> {
-        let status = Command::new("playerctl")
-            .arg("status")
-            .output()
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())?;
-        if status == "Paused" {
-            return Some(if options.show_pause_emoji {
-                "⏸".to_string()
+        let status = self.playerctl_smart(&["status"]);
+        if let Some(ref s) = status {
+            if s == "Playing" {
+
+                let track = self.playerctl_smart(&[
+                    "metadata",
+                    "--format",
+                    "{{xesam:artist}} - {{xesam:title}}",
+                ])?
+                .trim()
+                .to_string();
+
+                let track = if track.starts_with(" - ") || track.ends_with(" - ") || track == " - " {
+                    self.playerctl_smart(&["metadata", "--format", "{{xesam:title}}"])?
+                        .trim()
+                        .to_string()
+                } else {
+                    track
+                };
+
+                if track.is_empty() || track == " - " || track.contains("null") {
+                    return None;
+                }
+
+                let prefix = if options.use_music_note_prefix {
+                    "🎵 "
+                } else {
+                    "Listening to: "
+                };
+                return Some(format!("{}{}", prefix, track));
             } else {
-                "Paused".to_string()
-            });
+              
+                return Some(if options.show_pause_emoji {
+                    "⏸".to_string()
+                } else {
+                    "Paused".to_string()
+                });
+            }
         }
-        let output = Command::new("playerctl")
-            .arg("metadata")
-            .arg("--format")
-            .arg("{{artist}} - {{title}}")
-            .output()
-            .ok()?;
-        let track = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if track.is_empty() {
-            return None;
-        }
-        let prefix = if options.use_music_note_prefix {
-            "🎵 "
+
+        Some(if options.show_pause_emoji {
+            "⏸".to_string()
         } else {
-            "Listening to: "
-        };
-        Some(format!("{}{}", prefix, track))
+            "Paused".to_string()
+        })
     }
 
     pub fn is_playing(&self) -> bool {
-        Command::new("playerctl")
-            .arg("status")
-            .output()
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "Playing")
-            .unwrap_or(false)
+        self.playerctl_smart(&["status"]).map(|s| s == "Playing").unwrap_or(false)
     }
 
     pub fn play_pause(&self) {
@@ -171,26 +206,13 @@ impl MediaLinkModule {
     }
 
     pub fn get_position(&self) -> Option<f32> {
-        let output = Command::new("playerctl")
-            .arg("metadata")
-            .arg("--format")
-            .arg("{{position}}")
-            .output()
-            .ok()?;
-        let binding = String::from_utf8_lossy(&output.stdout);
-        let pos_str = binding.trim();
-        pos_str.parse::<f32>().ok().map(|p| p / 1_000_000.0)
+        self.playerctl_smart(&["position"])
+            .and_then(|s| s.parse::<f32>().ok())
     }
 
     pub fn get_duration(&self) -> Option<f32> {
-        let output = Command::new("playerctl")
-            .arg("metadata")
-            .arg("--format")
-            .arg("{{mpris:length}}")
-            .output()
-            .ok()?;
-        let binding = String::from_utf8_lossy(&output.stdout);
-        let dur_str = binding.trim();
-        dur_str.parse::<f32>().ok().map(|d| d / 1_000_000.0)
+        self.playerctl_smart(&["metadata", "mpris:length"])
+            .and_then(|s| s.parse::<f64>().ok())
+            .map(|microseconds| (microseconds / 1_000_000.0) as f32)
     }
 }

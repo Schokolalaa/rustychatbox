@@ -28,7 +28,7 @@ rand = "0.8"
 log = "0.4"
 fern = "0.6.2"
 dbus = "0.9"
-openvr = "0.7.0"
+openvr = "0.8.0"
 openxr = { git = "https://github.com/galister/openxrs", rev = "af4a55d", features = ["linked"] }
 rust-ini = "0.21"
 

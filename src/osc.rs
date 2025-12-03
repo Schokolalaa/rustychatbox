@@ -15,19 +15,26 @@ impl OscClient {
     }
 
     pub fn send_chatbox_message(&self, message: &str, _fx_sound: bool, slim_mode: bool) -> Result<()> {
-        let mut msg = message.to_string();
-        if slim_mode {
-            msg.push_str("\u{0003}\u{001f}");
+    let mut msg = message.to_string();
+
+    if slim_mode {
+        msg.push_str("\u{0003}\u{001f}");
+    } else {
+        if !msg.ends_with('\n') {
+            msg.push('\n');
         }
-        let msg_buf = rosc::encoder::encode(&OscPacket::Message(OscMessage {
-            addr: "/chatbox/input".to_string(),
-            args: vec![
-                OscType::String(msg),
-                OscType::Bool(true),
-                OscType::Bool(false),
-            ],
-        }))?;
-        self.socket.send_to(&msg_buf, &self.addr)?;
-        Ok(())
     }
+
+    let msg_buf = rosc::encoder::encode(&OscPacket::Message(OscMessage {
+        addr: "/chatbox/input".to_string(),
+        args: vec![
+            OscType::String(msg),
+            OscType::Bool(true),     // send = true
+            OscType::Bool(false),    // typing indicator = false
+        ],
+    }))?;
+
+    self.socket.send_to(&msg_buf, &self.addr)?;
+    Ok(())
+}
 }

@@ -1,6 +1,9 @@
 // src/deps.rs
+
+#[cfg(not(target_os = "android"))]
 use std::process::Command;
 
+#[cfg(not(target_os = "android"))]
 pub fn check_dependencies() -> Result<(), String> {
     let required_packages = vec!["playerctl", "lshw"];
     for package in required_packages {
@@ -29,5 +32,13 @@ pub fn check_dependencies() -> Result<(), String> {
         (xlib.XCloseDisplay)(display);
     }
 
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+pub fn check_dependencies() -> Result<(), String> {
+    // On Android, we skip the Linux-specific dependency checks
+    // but we still need to return Ok to allow the app to continue
+    log::info!("Skipping dependency checks on Android");
     Ok(())
 }

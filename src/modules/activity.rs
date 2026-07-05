@@ -1,18 +1,37 @@
 use serde::{Deserialize, Serialize};
+
+#[cfg(not(target_os = "android"))]
 use wayland_client::{Connection, QueueHandle};
+
+#[cfg(not(target_os = "android"))]
 use wayland_client::protocol::wl_registry::WlRegistry;
+#[cfg(not(target_os = "android"))]
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
     zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1,
 };
+
+#[cfg(not(target_os = "android"))]
 use std::sync::{Arc, Mutex};
+
 use eframe::egui;
+
+#[cfg(not(target_os = "android"))]
 use log::{debug, error, info};
+
+#[cfg(not(target_os = "android"))]
 use std::process::Command;
+
+#[cfg(not(target_os = "android"))]
 use openxr as xr;
+
+#[cfg(not(target_os = "android"))]
 extern crate ini;
+
+#[cfg(not(target_os = "android"))]
 use ini::Ini;
 
+#[cfg(not(target_os = "android"))]
 const MAX_LINE_WIDTH: usize = 27;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -112,12 +131,28 @@ impl WindowActivityOptions {
 
 #[allow(dead_code)]
 pub struct WindowActivityModule {
+    #[cfg(not(target_os = "android"))]
     wayland_conn: Option<Connection>,
+    #[cfg(not(target_os = "android"))]
     x11_worker: Option<std::thread::JoinHandle<()>>,
+    #[cfg(not(target_os = "android"))]
     is_vr_active: Arc<Mutex<bool>>,
+    #[cfg(not(target_os = "android"))]
     current_title: Arc<Mutex<String>>,
 }
 
+#[cfg(target_os = "android")]
+impl WindowActivityModule {
+    pub fn new(_options: &WindowActivityOptions) -> Self {
+        Self {}
+    }
+    
+    pub fn get_formatted_activity(&self, _options: &WindowActivityOptions) -> Option<String> {
+        None
+    }
+}
+
+#[cfg(not(target_os = "android"))]
 impl Drop for WindowActivityModule {
     fn drop(&mut self) {
         if let Some(worker) = self.x11_worker.take() {
@@ -127,6 +162,7 @@ impl Drop for WindowActivityModule {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl WindowActivityModule {
     /*pub fn is_vr_active(&self) -> bool {
         *self.is_vr_active.lock().unwrap()
@@ -497,6 +533,7 @@ impl WindowActivityModule {
 
 }
 
+#[cfg(not(target_os = "android"))]
 fn get_kwin_active_application_name() -> Result<String, String> {
     let uuid_output = Command::new("kdotool")
         .arg("getactivewindow")
@@ -599,6 +636,7 @@ fn get_kwin_active_application_name() -> Result<String, String> {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 fn get_x11_window_title() -> Option<String> {
     Command::new("xdotool")
         .args(["getactivewindow", "getwindowname"])
@@ -618,6 +656,7 @@ fn get_x11_window_title() -> Option<String> {
         })
 }
 
+#[cfg(not(target_os = "android"))]
 struct WaylandState {
     toplevel_manager: Option<ZwlrForeignToplevelManagerV1>,
     current_title: Arc<Mutex<String>>,
@@ -625,6 +664,7 @@ struct WaylandState {
     active_toplevel: Option<ZwlrForeignToplevelHandleV1>,
 }
 
+#[cfg(not(target_os = "android"))]
 impl wayland_client::Dispatch<WlRegistry, ()> for WaylandState {
     fn event(
         state: &mut Self,
@@ -649,6 +689,7 @@ impl wayland_client::Dispatch<WlRegistry, ()> for WaylandState {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl wayland_client::Dispatch<ZwlrForeignToplevelManagerV1, ()> for WaylandState {
     fn event(
         state: &mut Self,
@@ -668,6 +709,7 @@ impl wayland_client::Dispatch<ZwlrForeignToplevelManagerV1, ()> for WaylandState
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl wayland_client::Dispatch<ZwlrForeignToplevelHandleV1, ()> for WaylandState {
     fn event(
         state: &mut Self,

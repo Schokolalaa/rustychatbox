@@ -1,5 +1,7 @@
-use network_interface::{NetworkInterface, NetworkInterfaceConfig};
 use serde::{Deserialize, Serialize};
+
+#[cfg(not(target_os = "android"))]
+use network_interface::{NetworkInterface, NetworkInterfaceConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkOptions {
@@ -75,10 +77,21 @@ impl NetworkStatsOptions {
 pub struct NetworkStats;
 
 impl NetworkStats {
-    pub fn get_interfaces() -> Vec<NetworkInterface> {
-        NetworkInterface::show()
-            .map_err(|e| eprintln!("Failed to get network interfaces: {}", e))
-            .unwrap_or_default()
+    pub fn get_interfaces() -> Vec<String> {
+        #[cfg(not(target_os = "android"))]
+        {
+            use network_interface::NetworkInterface;
+            NetworkInterface::show()
+                .map_err(|e| eprintln!("Failed to get network interfaces: {}", e))
+                .unwrap_or_default()
+                .into_iter()
+                .map(|iface| iface.name.clone())
+                .collect()
+        }
+        #[cfg(target_os = "android")]
+        {
+            Vec::new()
+        }
     }
 
     pub fn get_download_speed(_interface_name: &str) -> Option<f64> {

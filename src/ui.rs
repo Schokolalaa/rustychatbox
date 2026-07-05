@@ -15,8 +15,10 @@ use types::{ChatTab, IntegrationsTab, StatusTab, Tab};
 use std::fs;
 use std::time::{Instant, Duration};
 use log::{error, info, debug};
-use arboard::Clipboard;
 use crate::config::Config;
+
+#[cfg(not(target_os = "android"))]
+use arboard::Clipboard;
 use crate::osc::OscClient;
 use crate::modules::{
     activity::{WindowActivityModule, WindowActivityOptions},
@@ -53,7 +55,8 @@ pub struct App {
     last_osc_send: Instant,
     config_changed: bool,
     pending_scroll_to: Option<egui::Id>,
-    clipboard: Clipboard,
+    #[cfg(not(target_os = "android"))]
+    clipboard: arboard::Clipboard,
     live_edit_enabled: bool,
     previous_osc_preview: String,
     last_activity_update: Instant,
@@ -62,7 +65,18 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(osc_client: OscClient, config: Config, clipboard: Clipboard) -> Self {
+    #[cfg(not(target_os = "android"))]
+    pub fn new(osc_client: OscClient, config: Config, clipboard: arboard::Clipboard) -> Self {
+        Self::new_internal(osc_client, config, Some(clipboard))
+    }
+    
+    #[cfg(target_os = "android")]
+    pub fn new(osc_client: OscClient, config: Config) -> Self {
+        Self::new_internal(osc_client, config)
+    }
+    
+#[cfg(not(target_os = "android"))]
+    fn new_internal(osc_client: OscClient, config: Config, clipboard: Option<arboard::Clipboard>) -> Self {
         let mut app_options = AppOptionsOptions {
             app_options: config.app_options,
             enabled: true,
@@ -82,6 +96,30 @@ impl App {
         let window_activity_enabled = config.window_activity_enabled.unwrap_or(true);
     
         info!("Initializing App with OSC client and config");
+        
+        let mut app_options = AppOptionsOptions {
+            app_options: config.app_options,
+            enabled: true,
+        };
+        app_options.app_options.osc_options.update_rate = app_options
+            .app_options
+            .osc_options
+            .update_rate
+            .clamp(1.6, 10.0);
+        
+        let mut status_module = StatusModule::new();
+        for message in config.status_messages {
+            status_module.add_message(message);
+        }
+        
+        let window_activity_options = config.window_activity_options.unwrap_or_default();
+        let window_activity_enabled = config.window_activity_enabled.unwrap_or(true);
+        
+        let window_activity = WindowActivityOptions {
+            enabled: window_activity_enabled,
+            ..window_activity_options.clone()
+        };
+        
         Self {
             current_tab: config.current_tab,
             app_options,
@@ -102,10 +140,7 @@ impl App {
             status_tab: config.status_tab,
             status_options: config.status_options,
             time_options: config.time_options,
-            window_activity: WindowActivityOptions {
-                enabled: window_activity_enabled,
-                ..window_activity_options.clone()
-            },
+            window_activity,
             osc_client,
             components_module: ComponentStatsModule::new(),
             media_module: MediaLinkModule::new(),
@@ -116,7 +151,72 @@ impl App {
             last_osc_send: Instant::now(),
             config_changed: false,
             pending_scroll_to: None,
-            clipboard,
+            #[cfg(not(target_os = "android"))]
+            clipboard: clipboard.expect("Clipboard must be Some for non-Android"),
+            live_edit_enabled: config.live_edit_enabled,
+            previous_osc_preview: String::new(),
+            last_activity_update: Instant::now(),
+            cached_activity: None,
+            first_update: true,
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    fn new_internal(osc_client: OscClient, config: Config) -> Self {
+        let mut app_options = AppOptionsOptions {
+            app_options: config.app_options,
+            enabled: true,
+        };
+        app_options.app_options.osc_options.update_rate = app_options
+            .app_options
+            .osc_options
+            .update_rate
+            .clamp(1.6, 10.0);
+        
+        let mut status_module = StatusModule::new();
+        for message in config.status_messages {
+            status_module.add_message(message);
+        }
+        
+        let window_activity_options = config.window_activity_options.unwrap_or_default();
+        let window_activity_enabled = config.window_activity_enabled.unwrap_or(true);
+        
+        let window_activity = WindowActivityOptions {
+            enabled: window_activity_enabled,
+            ..window_activity_options.clone()
+        };
+        
+        Self {
+            current_tab: config.current_tab,
+            app_options,
+            chat_tab: config.chat_tab,
+            chat_options: config.chat_options,
+            component_stats: config.component_stats_options,
+            extra_options: config.extra_options,
+            integrations_tab: IntegrationsTab {
+                personal_status_enabled: config.personal_status_enabled,
+                component_stats_enabled: config.component_stats_enabled,
+                network_stats_enabled: config.network_stats_enabled,
+                current_time_enabled: config.current_time_enabled,
+                medialink_enabled: config.medialink_enabled,
+                window_activity_enabled,
+            },
+            media_link: config.media_link_options,
+            network_stats: NetworkStatsOptions::new(config.network_stats_options.config),
+            status_tab: config.status_tab,
+            status_options: config.status_options,
+            time_options: config.time_options,
+            window_activity,
+            osc_client,
+            components_module: ComponentStatsModule::new(),
+            media_module: MediaLinkModule::new(),
+            status_module,
+            window_activity_module: WindowActivityModule::new(&window_activity_options),
+            osc_preview: String::new(),
+            send_to_vrchat: config.send_to_vrchat,
+            last_osc_send: Instant::now(),
+            config_changed: false,
+            pending_scroll_to: None,
             live_edit_enabled: config.live_edit_enabled,
             previous_osc_preview: String::new(),
             last_activity_update: Instant::now(),
@@ -190,7 +290,7 @@ impl App {
             if self.integrations_tab.network_stats_enabled {
                 let interfaces = NetworkStats::get_interfaces();
                 if let Some(iface) = interfaces.first() {
-                    let stats = NetworkStats::get_formatted_stats(&self.network_stats.config, &iface.name);
+                    let stats = NetworkStats::get_formatted_stats(&self.network_stats.config, iface);
                     if !stats.is_empty() {
                         parts.push(stats);
                     }
@@ -611,18 +711,32 @@ impl eframe::App for App {
                 ui.horizontal(|ui| {
                     if ui.button("Discord").clicked() {
                         debug!("Discord button clicked");
-                        if let Err(e) = open::that("https://discord.gg/kzYjRnppFn") {
-                            error!("Failed to open Discord URL: {}", e);
-                        } else {
-                            info!("Opened Discord URL");
+                        #[cfg(not(target_os = "android"))]
+                        {
+                            if let Err(e) = open::that("https://discord.gg/kzYjRnppFn") {
+                                error!("Failed to open Discord URL: {}", e);
+                            } else {
+                                info!("Opened Discord URL");
+                            }
+                        }
+                        #[cfg(target_os = "android")]
+                        {
+                            error!("URL opening not available on Android");
                         }
                     }
                     if ui.button("GitHub").clicked() {
                         debug!("GitHub button clicked");
-                        if let Err(e) = open::that("https://github.com/Voiasis/RustyChatBox") {
-                            error!("Failed to open GitHub URL: {}", e);
-                        } else {
-                            info!("Opened GitHub URL");
+                        #[cfg(not(target_os = "android"))]
+                        {
+                            if let Err(e) = open::that("https://github.com/Voiasis/RustyChatBox") {
+                                error!("Failed to open GitHub URL: {}", e);
+                            } else {
+                                info!("Opened GitHub URL");
+                            }
+                        }
+                        #[cfg(target_os = "android")]
+                        {
+                            error!("URL opening not available on Android");
                         }
                     }
                     ui.heading("Preview");

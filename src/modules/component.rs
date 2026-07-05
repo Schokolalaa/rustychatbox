@@ -1,9 +1,17 @@
 use serde::{Deserialize, Serialize};
-use sysinfo::{CpuExt, SystemExt};
-use std::fs;
-use std::path::Path;
-use std::process::Command;
 use eframe::egui;
+
+#[cfg(not(target_os = "android"))]
+use sysinfo::{CpuExt, SystemExt};
+
+#[cfg(not(target_os = "android"))]
+use std::fs;
+
+#[cfg(not(target_os = "android"))]
+use std::path::Path;
+
+#[cfg(not(target_os = "android"))]
+use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentStatsOptions {
@@ -98,12 +106,17 @@ impl ComponentStatsOptions {
 }
 
 pub struct ComponentStatsModule {
+    #[cfg(not(target_os = "android"))]
     system: sysinfo::System,
+    #[cfg(not(target_os = "android"))]
     gpu_device: Option<String>,
+    #[cfg(not(target_os = "android"))]
     last_update: std::time::Instant,
+    #[cfg(not(target_os = "android"))]
     cached_stats: String,
 }
 
+#[cfg(not(target_os = "android"))]
 impl ComponentStatsModule {
     pub fn new() -> Self {
         let mut system = sysinfo::System::new_all();
@@ -371,5 +384,16 @@ impl ComponentStatsModule {
             self.last_update = std::time::Instant::now();
         }
         self.cached_stats.clone()
+    }
+}
+
+#[cfg(target_os = "android")]
+impl ComponentStatsModule {
+    pub fn new() -> Self {
+        Self {}
+    }
+    
+    pub fn get_formatted_stats(&mut self, _options: &ComponentStatsOptions) -> String {
+        String::new()
     }
 }

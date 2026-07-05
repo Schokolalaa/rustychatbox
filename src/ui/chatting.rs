@@ -60,13 +60,21 @@ pub fn show_chatting_tab(ui: &mut Ui, app: &mut App) {
                 ui.label(format!("{}/140", app.chat_tab.message.len()));
                 if ui.button("Paste").clicked() {
                     debug!("Paste button clicked");
-                    if let Ok(text) = app.clipboard.get_text() {
-                        app.chat_tab.message = text.chars().take(140).collect();
-                        app.chat_tab.is_focused = true;
-                        app.config_changed = true;
-                        info!("Pasted text into chat input");
-                    } else {
-                        error!("Failed to paste from clipboard");
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        if let Ok(text) = app.clipboard.get_text() {
+                            app.chat_tab.message = text.chars().take(140).collect();
+                            app.chat_tab.is_focused = true;
+                            app.config_changed = true;
+                            info!("Pasted text into chat input");
+                        } else {
+                            error!("Failed to paste from clipboard");
+                        }
+                    }
+                    #[cfg(target_os = "android")]
+                    {
+                        // Clipboard not available on Android in this version
+                        error!("Clipboard not available on Android");
                     }
                 }
                 if ui.button("Send").clicked() && !app.chat_tab.message.is_empty() && app.chat_tab.message.len() <= 140 {
@@ -200,10 +208,17 @@ pub fn show_chatting_tab(ui: &mut Ui, app: &mut App) {
                                     }
                                     if ui.button("Copy").clicked() {
                                         debug!("Copy button clicked for message");
-                                        if let Err(e) = app.clipboard.set_text(&message.text) {
-                                            error!("Failed to copy message to clipboard: {}", e);
-                                        } else {
-                                            info!("Copied message to clipboard: {}", message.text);
+                                        #[cfg(not(target_os = "android"))]
+                                        {
+                                            if let Err(e) = app.clipboard.set_text(&message.text) {
+                                                error!("Failed to copy message to clipboard: {}", e);
+                                            } else {
+                                                info!("Copied message to clipboard: {}", message.text);
+                                            }
+                                        }
+                                        #[cfg(target_os = "android")]
+                                        {
+                                            error!("Clipboard not available on Android");
                                         }
                                     }
                                     if ui.button("Resend").clicked() {
@@ -245,10 +260,17 @@ pub fn show_chatting_tab(ui: &mut Ui, app: &mut App) {
                                     }
                                     if ui.button("Copy").clicked() {
                                         debug!("Copy button clicked for message");
-                                        if let Err(e) = app.clipboard.set_text(&message.text) {
-                                            error!("Failed to copy message to clipboard: {}", e);
-                                        } else {
-                                            info!("Copied message to clipboard: {}", message.text);
+                                        #[cfg(not(target_os = "android"))]
+                                        {
+                                            if let Err(e) = app.clipboard.set_text(&message.text) {
+                                                error!("Failed to copy message to clipboard: {}", e);
+                                            } else {
+                                                info!("Copied message to clipboard: {}", message.text);
+                                            }
+                                        }
+                                        #[cfg(target_os = "android")]
+                                        {
+                                            error!("Clipboard not available on Android");
                                         }
                                     }
                                     if ui.button("Resend").clicked() {

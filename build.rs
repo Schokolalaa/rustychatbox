@@ -1,33 +1,27 @@
 use std::fs;
-use std::path::Path;
-use std::process::Command;
+
 
 fn main() {
-    // Create AppDir structure
-    let app_dir = "AppDir";
-    fs::create_dir_all(format!("{}/usr/bin", app_dir)).expect("Failed to create AppDir/usr/bin");
-    fs::create_dir_all(format!("{}/usr/lib", app_dir)).expect("Failed to create AppDir/usr/lib");
-    fs::create_dir_all(format!("{}/usr/share/applications", app_dir))
-        .expect("Failed to create AppDir/usr/share/applications");
-    fs::create_dir_all(format!("{}/usr/share/icons/hicolor/64x64/apps", app_dir))
-        .expect("Failed to create AppDir/usr/share/icons");
-
-    // Copy icon
-    let icon_src = "images/RustyChatBox_Icon.png";
-    if !Path::new(icon_src).exists() {
-        panic!("Icon not found at {}.", icon_src);
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
+        return;
     }
-    fs::copy(icon_src, format!("{}/rustychatbox.png", app_dir))
-        .expect("Failed to copy icon");
-    fs::copy(
-        icon_src,
+    let app_dir = "AppDir";
+    for dir in vec![
+        format!("{}/usr/bin", app_dir),
+        format!("{}/usr/lib", app_dir),
+        format!("{}/usr/share/applications", app_dir),
+        format!("{}/usr/share/icons/hicolor/64x64/apps", app_dir),
+    ] {
+        fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("Failed to create {}: {}", dir, e));
+    }
+    let icon = "images/RustyChatBox_Icon.png";
+    for dest in vec![
+        format!("{}/rustychatbox.png", app_dir),
         format!("{}/usr/share/icons/hicolor/64x64/apps/rustychatbox.png", app_dir),
-    )
-        .expect("Failed to copy icon");
-
-    // Create .desktop file
-    let desktop_content = "\
-[Desktop Entry]
+    ] {
+        fs::copy(icon, &dest).unwrap_or_else(|e| panic!("Failed to copy icon: {}", e));
+    }
+    let desktop = "[Desktop Entry]
 Name=RustyChatBox
 Exec=rustychatbox
 Type=Application
@@ -37,27 +31,8 @@ Categories=Utility;
 StartupWMClass=RustyChatBox
 Comment=A chat application built with Rust
 ";
-    fs::write(format!("{}/rustychatbox.desktop", app_dir), desktop_content)
-        .expect("Failed to write .desktop file");
-    fs::copy(
-        format!("{}/rustychatbox.desktop", app_dir),
-        format!("{}/usr/share/applications/rustychatbox.desktop", app_dir),
-    )
-    .expect("Failed to copy .desktop file");
-
-    // Create AppRun
-    let apprun_content = "\
-#!/bin/bash
-HERE=\"$(dirname \"$(readlink -f \"${0}\")\")\"\n\
-exec \"${HERE}/usr/bin/rustychatbox\" \"$@\"\
-";
-    fs::write(format!("{}/AppRun", app_dir), apprun_content).expect("Failed to write AppRun");
-    Command::new("chmod")
-        .args(["+x", &format!("{}/AppRun", app_dir)])
-        .status()
-        .expect("Failed to chmod AppRun");
-
-    // Print post-build instructions
+    let dp = format!("{}/rustychatbox.desktop", app_dir);
+    fs::write(&dp, desktop).unwrap();
+    fs::copy(&dp, format!("{}/usr/share/applications/rustychatbox.desktop", app_dir)).unwrap();
     println!("cargo:warning=AppDir created at {}.", app_dir);
-    println!("cargo:warning=To create AppImage, run `just build`");
 }

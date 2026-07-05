@@ -134,7 +134,7 @@ pub fn show_integrations_tab(ui: &mut Ui, app: &mut App) {
         if app.integrations_tab.network_stats_enabled {
             let interfaces = crate::modules::network::NetworkStats::get_interfaces();
             if let Some(iface) = interfaces.first() {
-                let stats = crate::modules::network::NetworkStats::get_formatted_stats(&app.network_stats.config, &iface.name);
+                let stats = crate::modules::network::NetworkStats::get_formatted_stats(&app.network_stats.config, iface);
                 if !stats.is_empty() {
                     ui.label(stats);
                 }

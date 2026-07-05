@@ -1,15 +1,21 @@
 use std::io::Cursor;
-use single_instance::SingleInstance;
 use std::fs;
-use notify_rust::Notification;
 use eframe::egui;
 use eframe::egui::{IconData, FontDefinitions, FontFamily, Color32, RichText, Visuals, Stroke, Rounding};
 use image::io::Reader as ImageReader;
-use arboard::Clipboard;
 use crate::config::Config;
 use crate::ui::App;
 use crate::osc::OscClient;
 use crate::modules::network::NetworkOptions;
+
+#[cfg(not(target_os = "android"))]
+use arboard::Clipboard;
+
+#[cfg(not(target_os = "android"))]
+use single_instance::SingleInstance;
+
+#[cfg(not(target_os = "android"))]
+use notify_rust::Notification;
 
 mod deps;
 mod osc;
@@ -55,10 +61,22 @@ struct LoadingApp {
 
 impl LoadingApp {
     fn new() -> Self {
+        let initial_state = if cfg!(target_os = "android") {
+            LoadingState::ConfigDir
+        } else {
+            LoadingState::SingleInstance
+        };
+        
+        let initial_message = if cfg!(target_os = "android") {
+            "Setting up config directory...".to_string()
+        } else {
+            "Checking single instance...".to_string()
+        };
+        
         Self {
-            state: LoadingState::SingleInstance,
-            progress: 0.0,
-            message: "Checking single instance...".to_string(),
+            state: initial_state,
+            progress: if cfg!(target_os = "android") { 0.125 } else { 0.0 },
+            message: initial_message,
             config_path: dirs::config_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join("RustyChatBox")
@@ -75,28 +93,31 @@ impl LoadingApp {
     fn update_state(&mut self) -> Option<RustyGUI> {
         match self.state {
             LoadingState::SingleInstance => {
-                log::info!("Checking single instance");
-                let instance = match SingleInstance::new("RustyChatBox") {
-                    Ok(instance) => instance,
-                    Err(e) => {
-                        let error_msg = format!("Failed to create lock: {}", e);
+                #[cfg(not(target_os = "android"))]
+                {
+                    log::info!("Checking single instance");
+                    let instance = match SingleInstance::new("RustyChatBox") {
+                        Ok(instance) => instance,
+                        Err(e) => {
+                            let error_msg = format!("Failed to create lock: {}", e);
+                            log::error!("{}", error_msg);
+                            self.error = Some(format!("{} Please check for system permissions.", error_msg));
+                            self.state = LoadingState::Done;
+                            return None::<RustyGUI>;
+                        }
+                    };
+                    if !instance.is_single() {
+                        let error_msg = "Another instance is already running!";
                         log::error!("{}", error_msg);
-                        self.error = Some(format!("{} Please check for system permissions.", error_msg));
+                        Notification::new()
+                            .summary("RustyChatBox")
+                            .body(error_msg)
+                            .show()
+                            .expect("Failed to show notification");
+                        self.error = Some(format!("{} Close the other instance and try again.", error_msg));
                         self.state = LoadingState::Done;
                         return None::<RustyGUI>;
                     }
-                };
-                if !instance.is_single() {
-                    let error_msg = "Another instance is already running!";
-                    log::error!("{}", error_msg);
-                    Notification::new()
-                        .summary("RustyChatBox")
-                        .body(error_msg)
-                        .show()
-                        .expect("Failed to show notification");
-                    self.error = Some(format!("{} Close the other instance and try again.", error_msg));
-                    self.state = LoadingState::Done;
-                    return None::<RustyGUI>;
                 }
                 self.state = LoadingState::ConfigDir;
                 self.progress = 0.125;
@@ -221,26 +242,42 @@ impl LoadingApp {
             LoadingState::InitializeApp => {
                 log::info!("Initializing application");
                 if let (Some(config), Some(osc_client), Some(font_definitions)) = (self.config.take(), self.osc_client.take(), self.font_definitions.take()) {
-                    let clipboard = match Clipboard::new() {
-                        Ok(clipboard) => clipboard,
-                        Err(e) => {
-                            let error_msg = format!("Failed to initialize clipboard: {}", e);
-                            log::error!("{}", error_msg);
-                            self.error = Some(format!("{} Ensure clipboard access is available.", error_msg));
-                            self.state = LoadingState::Done;
-                            return None::<RustyGUI>;
-                        }
-                    };
-                    let app = App::new(osc_client, config, clipboard);
-                    self.state = LoadingState::Done;
-                    self.progress = 1.0;
-                    self.message = "Complete".to_string();
-                    log::info!("Application initialized");
-                    return Some(RustyGUI {
-                        app,
-                        config_path: self.config_path.clone(),
-                        font_definitions,
-                    });
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        let clipboard = match Clipboard::new() {
+                            Ok(clipboard) => clipboard,
+                            Err(e) => {
+                                let error_msg = format!("Failed to initialize clipboard: {}", e);
+                                log::error!("{}", error_msg);
+                                self.error = Some(format!("{} Ensure clipboard access is available.", error_msg));
+                                self.state = LoadingState::Done;
+                                return None::<RustyGUI>;
+                            }
+                        };
+                        let app = App::new(osc_client, config, clipboard);
+                        self.state = LoadingState::Done;
+                        self.progress = 1.0;
+                        self.message = "Complete".to_string();
+                        log::info!("Application initialized");
+                        return Some(RustyGUI {
+                            app,
+                            config_path: self.config_path.clone(),
+                            font_definitions,
+                        });
+                    }
+                    #[cfg(target_os = "android")]
+                    {
+                        let app = App::new(osc_client, config);
+                        self.state = LoadingState::Done;
+                        self.progress = 1.0;
+                        self.message = "Complete".to_string();
+                        log::info!("Application initialized");
+                        return Some(RustyGUI {
+                            app,
+                            config_path: self.config_path.clone(),
+                            font_definitions,
+                        });
+                    }
                 }
             }
             LoadingState::Done => {}
